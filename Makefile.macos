@@ -1,0 +1,42 @@
+deps:
+	brew install bison re2c
+
+php-src:
+	git clone --single-branch --branch PHP-8.0 --depth 1 https://github.com/php/php-src.git
+
+micro: php-src
+	cd php-src/sapi/micro || git clone --single-branch --depth 1 https://github.com/easysoft/phpmicro.git php-src/sapi/micro
+
+build: php-src micro
+	cd php-src && patch -p1 -N < sapi/micro/patches/cli_checks_80.patch || echo "Patches already applied?"
+	cd php-src && export PATH="/usr/local/opt/bison/bin:${PATH}" && \
+	./buildconf --force && \
+		./configure \
+		--disable-all \
+		--disable-cgi \
+		--disable-cli \
+		--enable-micro \
+		--disable-phpdbg \
+		--without-pear \
+		--disable-shared \
+		--enable-static \
+		--disable-dom \
+		--disable-simplexml \
+		--disable-xml \
+		--disable-xmlreader \
+		--disable-xmlwriter \
+		--enable-ctype \
+		--enable-filter \
+		--enable-mbstring \
+		--enable-session \
+		--enable-sockets \
+		--enable-tokenizer \
+		--enable-phar \
+		--enable-posix \
+		--enable-pcntl \
+		--disable-mbregex && \
+		make -j `sysctl -n hw.logicalcpu` \
+		EXTRA_CFLAGS='-Os'
+
+build-test: build
+	cat ./php-src/sapi/micro/micro.sfx test.php >test && chmod 0755 ./test && ./test
