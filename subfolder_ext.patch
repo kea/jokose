@@ -1,0 +1,13 @@
+diff --git a/build/genif.sh b/build/genif.sh
+index 697bef95..8778050b 100755
+--- a/build/genif.sh
++++ b/build/genif.sh
+@@ -38,7 +38,7 @@ module_ptrs="$(echo $extensions | $AWK -f ./build/order_by_dep.awk)"
+ 
+ for ext in $extensions; do
+   ext_dir=$(echo "$ext" | cut -d ';' -f 2)
+-  header_list="$header_list $ext_dir/*.h*"
++  header_list="$header_list `find $ext_dir -name '*.h*' -exec echo {} \; `"
+ done
+ 
+ includes=$($AWK -f ./build/print_include.awk $header_list)

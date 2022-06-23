@@ -1,17 +1,48 @@
+BUILDDIR = php-src
+LDFLAGS="-L/usr/local/opt/bison/lib"
+.DEFAULT_GOAL := help
+.SILENT:
+
+COLOR_RESET   = \033[0m
+COLOR_INFO    = \033[32m
+COLOR_COMMENT = \033[33m
+
+## help
+help:
+	printf "${COLOR_COMMENT}Usage:${COLOR_RESET}\n"
+	printf " make [target]\n\n"
+	printf "${COLOR_COMMENT}Available targets:${COLOR_RESET}\n"
+	awk '/^[a-zA-Z\-\_0-9\.@]+:/ { \
+		helpMessage = match(lastLine, /^## (.*)/); \
+		if (helpMessage) { \
+			helpCommand = substr($$1, 0, index($$1, ":")); \
+			helpMessage = substr(lastLine, RSTART + 3, RLENGTH); \
+			printf " ${COLOR_INFO}%-16s${COLOR_RESET} %s\n", helpCommand, helpMessage; \
+		} \
+	} \
+	{ lastLine = $$0 }' $(MAKEFILE_LIST)
+
 deps:
-	brew install bison re2c
+	brew install bison re2c sdl2
 
-php-src:
-	git clone --single-branch --branch PHP-8.0 --depth 1 https://github.com/php/php-src.git
+$(BUILDDIR):
+	git clone --single-branch --branch PHP-8.1.7 --depth 1 https://github.com/php/php-src.git $(BUILDDIR)
+	cd $(BUILDDIR) && patch -p1 -N < ../subfolder_ext.patch || echo "Patches already applied?"
 
-micro: php-src
-	cd php-src/sapi/micro || git clone --single-branch --depth 1 https://github.com/easysoft/phpmicro.git php-src/sapi/micro
+$(BUILDDIR)/sapi/micro: $(BUILDDIR)
+	cd $(BUILDDIR)/sapi/micro || git clone --single-branch --depth 1 https://github.com/easysoft/phpmicro.git $(BUILDDIR)/sapi/micro
+	cd $(BUILDDIR) && patch -p1 -N < sapi/micro/patches/cli_checks_81.patch || echo "Patches already applied?"
 
-build: php-src micro
-	cd php-src && patch -p1 -N < sapi/micro/patches/cli_checks_80.patch || echo "Patches already applied?"
-	cd php-src && export PATH="/usr/local/opt/bison/bin:${PATH}" && \
-	./buildconf --force && \
-		./configure \
+$(BUILDDIR)/ext/php-sdl: $(BUILDDIR)
+	cd $(BUILDDIR)/ext/php-sdl || git clone --single-branch --depth 1 https://github.com/Ponup/php-sdl.git $(BUILDDIR)/ext/php-sdl
+	cd $(BUILDDIR)/ext/php-sdl-image || git clone --single-branch --depth 1 https://github.com/kea/php-sdl-image.git $(BUILDDIR)/ext/php-sdl-image
+	cd $(BUILDDIR)/ext/php-sdl-mixer || git clone --single-branch --depth 1 https://github.com/kea/php-sdl-mixer.git $(BUILDDIR)/ext/php-sdl-mixer
+
+$(BUILDDIR)/configure: $(BUILDDIR) $(BUILDDIR)/ext/php-sdl $(BUILDDIR)/sapi/micro
+	cd $(BUILDDIR) && ./buildconf --force
+
+$(BUILDDIR)/Makefile: $(BUILDDIR)/configure
+	cd $(BUILDDIR) && ./configure \
 		--disable-all \
 		--disable-cgi \
 		--disable-cli \
@@ -34,9 +65,16 @@ build: php-src micro
 		--enable-phar \
 		--enable-posix \
 		--enable-pcntl \
-		--disable-mbregex && \
+		--enable-sdl \
+		--enable-sdl_image \
+		--enable-sdl_mixer \
+		--disable-mbregex
+
+## Build php in micro.sfx mode
+build: $(BUILDDIR)/Makefile
+	cd $(BUILDDIR) && export PATH="/usr/local/opt/bison/bin:${PATH}" && \
 		make -j `sysctl -n hw.logicalcpu` \
 		EXTRA_CFLAGS='-Os'
 
-build-test: build
-	cat ./php-src/sapi/micro/micro.sfx test.php >test && chmod 0755 ./test && ./test
+build-test: $(BUILDDIR)/sapi/micro/micro.sfx
+	cat ./$(BUILDDIR)/sapi/micro/micro.sfx test.php >test && chmod 0755 ./test && ./test
